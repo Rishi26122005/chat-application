@@ -3,59 +3,122 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Python Real-Time Chat</title>
-    <!-- Load the Socket.IO client library -->
+    <title>WhatsApp Clone - Rooms</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; background-color: #e5ddd5; display: flex; justify-content: center; padding: 20px; }
-        .chat-container { width: 100%; max-width: 500px; background: #fff; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); overflow: hidden; display: flex; flex-direction: column; height: 80vh; }
-        .header { background: #075e54; color: white; padding: 15px; font-weight: bold; }
+        body { font-family: Arial, sans-serif; background-color: #d1d7db; display: flex; justify-content: center; padding: 20px; margin: 0; }
+        .chat-container { width: 100%; max-width: 500px; background: #fff; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); overflow: hidden; display: flex; flex-direction: column; height: 85vh; }
+        .header { background: #075e54; color: white; padding: 15px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
+        .room-bar { background: #128c7e; padding: 10px; display: flex; gap: 8px; }
+        .room-bar input { flex: 1; padding: 8px 12px; border: none; border-radius: 4px; outline: none; }
+        .room-bar button { background: #075e54; color: white; border: none; padding: 8px 14px; border-radius: 4px; cursor: pointer; font-weight: bold; }
         #messages { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; background-color: #efeae2; }
-        .msg { background: #dcf8c6; padding: 8px 12px; border-radius: 8px; max-width: 75%; align-self: flex-start; box-shadow: 0 1px 1px rgba(0,0,0,0.1); }
+        
+        /* Message Bubbles */
+        .msg { padding: 8px 12px; border-radius: 8px; max-width: 75%; box-shadow: 0 1px 1px rgba(0,0,0,0.1); word-wrap: break-word; }
+        .msg.sent { background: #dcf8c6; align-self: flex-end; border-top-right-radius: 0; }
+        .msg.received { background: #ffffff; align-self: flex-start; border-top-left-radius: 0; }
         .sender { font-size: 0.75em; font-weight: bold; color: #075e54; margin-bottom: 3px; }
+        .status-msg { align-self: center; background: #e1f3fb; color: #555; font-size: 0.8em; padding: 4px 12px; border-radius: 12px; }
+        
         .input-area { display: flex; padding: 10px; background: #f0f0f0; gap: 8px; }
-        input { padding: 10px; border: 1px solid #ccc; border-radius: 20px; outline: none; }
-        #username { width: 25%; }
+        .input-area input { padding: 10px; border: 1px solid #ccc; border-radius: 20px; outline: none; }
         #messageInput { flex: 1; }
-        button { background: #128c7e; color: white; border: none; padding: 10px 18px; border-radius: 20px; cursor: pointer; font-weight: bold; }
-        button:hover { background: #075e54; }
+        #sendBtn { background: #128c7e; color: white; border: none; padding: 10px 18px; border-radius: 20px; cursor: pointer; font-weight: bold; }
+        #sendBtn:disabled { background: #999; cursor: not-allowed; }
     </style>
 </head>
 <body>
 
 <div class="chat-container">
-    <div class="header">Chat application (MVP)</div>
+    <div class="header">
+        <span>WhatsApp Clone</span>
+        <span id="currentRoomBadge" style="font-size: 0.85em; font-weight: normal;">Not connected</span>
+    </div>
+    
+    <!-- Room & Username Setup Bar -->
+    <div class="room-bar">
+        <input type="text" id="username" placeholder="Your Name">
+        <input type="text" id="roomInput" placeholder="Room ID (e.g. room1)">
+        <button onclick="joinChat()">Join</button>
+    </div>
+
     <div id="messages"></div>
+
     <div class="input-area">
-        <input type="text" id="username" placeholder="Your Name" value="User">
-        <input type="text" id="messageInput" placeholder="Type a message..." onkeypress="handleKeyPress(event)">
-        <button onclick="sendMessage()">Send</button>
+        <input type="text" id="messageInput" placeholder="Join a room first..." disabled onkeypress="handleKeyPress(event)">
+        <button id="sendBtn" onclick="sendMessage()" disabled>Send</button>
     </div>
 </div>
 
 <script>
-    // Establish WebSocket connection to the Flask server
     const socket = io();
+    let currentRoom = "";
+    let currentUser = "";
 
     const messagesDiv = document.getElementById('messages');
     const messageInput = document.getElementById('messageInput');
-    const usernameInput = document.getElementById('username');
+    const sendBtn = document.getElementById('sendBtn');
 
-    // Listen for incoming messages from the server
-    socket.on('message', function(data) {
+    function joinChat() {
+        const username = document.getElementById('username').value.trim();
+        const room = document.getElementById('roomInput').value.trim();
+
+        if (!username || !room) {
+            alert("Please enter both your name and a Room ID.");
+            return;
+        }
+
+        // Leave previous room if already in one
+        if (currentRoom) {
+            socket.emit('leave', { username: currentUser, room: currentRoom });
+        }
+
+        currentUser = username;
+        currentRoom = room;
+        messagesDiv.innerHTML = ""; // Clear screen for new chat
+
+        // Emit join event to server
+        socket.emit('join', { username: currentUser, room: currentRoom });
+
+        // Enable chat input
+        document.getElementById('currentRoomBadge').innerText = `Room: ${currentRoom}`;
+        messageInput.disabled = false;
+        messageInput.placeholder = "Type a message...";
+        sendBtn.disabled = false;
+    }
+
+    // Listen for room messages
+    socket.on('receive_message', function(data) {
         const msgElement = document.createElement('div');
-        msgElement.classList.add('msg');
-        msgElement.innerHTML = `<div class="sender">${data.username}</div><div>${data.text}</div>`;
+        const isMe = data.username === currentUser;
+        
+        msgElement.classList.add('msg', isMe ? 'sent' : 'received');
+        msgElement.innerHTML = `
+            ${!isMe ? `<div class="sender">${data.username}</div>` : ''}
+            <div>${data.text}</div>
+        `;
         messagesDiv.appendChild(msgElement);
-        messagesDiv.scrollTop = messagesDiv.scrollHeight; // Auto-scroll to bottom
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    });
+
+    // Listen for join/leave notifications
+    socket.on('status', function(data) {
+        const statusElement = document.createElement('div');
+        statusElement.classList.add('status-msg');
+        statusElement.innerText = data.msg;
+        messagesDiv.appendChild(statusElement);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
     });
 
     function sendMessage() {
         const text = messageInput.value.trim();
-        const username = usernameInput.value.trim() || "Anonymous";
-        if (text !== "") {
-            // Emit the message event to the Python backend
-            socket.send({ username: username, text: text });
+        if (text !== "" && currentRoom !== "") {
+            socket.emit('send_message', {
+                username: currentUser,
+                room: currentRoom,
+                text: text
+            });
             messageInput.value = "";
         }
     }
