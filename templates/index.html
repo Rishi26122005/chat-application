@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WhatsApp Clone - Rooms</title>
+    <title>WhatsApp Clone - Database History</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.js"></script>
     <style>
         body { font-family: Arial, sans-serif; background-color: #d1d7db; display: flex; justify-content: center; padding: 20px; margin: 0; }
@@ -15,10 +15,11 @@
         #messages { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; background-color: #efeae2; }
         
         /* Message Bubbles */
-        .msg { padding: 8px 12px; border-radius: 8px; max-width: 75%; box-shadow: 0 1px 1px rgba(0,0,0,0.1); word-wrap: break-word; }
+        .msg { padding: 8px 12px 4px 12px; border-radius: 8px; max-width: 75%; box-shadow: 0 1px 1px rgba(0,0,0,0.1); word-wrap: break-word; position: relative; }
         .msg.sent { background: #dcf8c6; align-self: flex-end; border-top-right-radius: 0; }
         .msg.received { background: #ffffff; align-self: flex-start; border-top-left-radius: 0; }
-        .sender { font-size: 0.75em; font-weight: bold; color: #075e54; margin-bottom: 3px; }
+        .sender { font-size: 0.75em; font-weight: bold; color: #075e54; margin-bottom: 2px; }
+        .timestamp { font-size: 0.65em; color: #666; text-align: right; margin-top: 2px; }
         .status-msg { align-self: center; background: #e1f3fb; color: #555; font-size: 0.8em; padding: 4px 12px; border-radius: 12px; }
         
         .input-area { display: flex; padding: 10px; background: #f0f0f0; gap: 8px; }
@@ -32,11 +33,10 @@
 
 <div class="chat-container">
     <div class="header">
-        <span>WhatsApp Clone</span>
+        <span>WhatsApp Clone (Database)</span>
         <span id="currentRoomBadge" style="font-size: 0.85em; font-weight: normal;">Not connected</span>
     </div>
     
-    <!-- Room & Username Setup Bar -->
     <div class="room-bar">
         <input type="text" id="username" placeholder="Your Name">
         <input type="text" id="roomInput" placeholder="Room ID (e.g. room1)">
@@ -69,27 +69,36 @@
             return;
         }
 
-        // Leave previous room if already in one
         if (currentRoom) {
             socket.emit('leave', { username: currentUser, room: currentRoom });
         }
 
         currentUser = username;
         currentRoom = room;
-        messagesDiv.innerHTML = ""; // Clear screen for new chat
+        messagesDiv.innerHTML = ""; // Clear view before loading history
 
-        // Emit join event to server
         socket.emit('join', { username: currentUser, room: currentRoom });
 
-        // Enable chat input
         document.getElementById('currentRoomBadge').innerText = `Room: ${currentRoom}`;
         messageInput.disabled = false;
         messageInput.placeholder = "Type a message...";
         sendBtn.disabled = false;
     }
 
-    // Listen for room messages
+    // 1. Populate chat history loaded from SQLite database
+    socket.on('load_history', function(history) {
+        history.forEach(data => {
+            appendMessage(data);
+        });
+    });
+
+    // 2. Handle incoming real-time messages
     socket.on('receive_message', function(data) {
+        appendMessage(data);
+    });
+
+    // Helper function to render message bubbles
+    function appendMessage(data) {
         const msgElement = document.createElement('div');
         const isMe = data.username === currentUser;
         
@@ -97,12 +106,12 @@
         msgElement.innerHTML = `
             ${!isMe ? `<div class="sender">${data.username}</div>` : ''}
             <div>${data.text}</div>
+            <div class="timestamp">${data.timestamp || ''}</div>
         `;
         messagesDiv.appendChild(msgElement);
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
-    });
+    }
 
-    // Listen for join/leave notifications
     socket.on('status', function(data) {
         const statusElement = document.createElement('div');
         statusElement.classList.add('status-msg');
